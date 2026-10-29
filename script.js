@@ -37,6 +37,8 @@ const musicForwardEl = document.querySelector('#music-forward');
 const musicMuteEl = document.querySelector('#music-mute');
 const musicMuteIconEl = document.querySelector('#music-mute-icon');
 const musicStatusEl = document.querySelector('#music-status');
+const soundEffectsEl = document.querySelector('#sound-effects');
+const soundEffectsStatusEl = document.querySelector('#sound-effects-status');
 const difficultySettings = {
   normal: {
     startingSeconds: 60,
@@ -78,6 +80,78 @@ let flowCallback = null;
 let flowDelay = 0;
 let flowScheduledAt = 0;
 let currentMusicTrack = 0;
+let soundEffectsEnabled = true;
+let audioContext = null;
+
+// Create the audio context only when a game effect is first played.
+function getSoundContext() {
+  if (!soundEffectsEnabled) return null;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    soundEffectsStatusEl.textContent = 'Sound effects are not supported in this browser.';
+    return null;
+  }
+
+  if (!audioContext) audioContext = new AudioContextClass();
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {
+      soundEffectsStatusEl.textContent = 'Sound effects could not be started.';
+    });
+  }
+  return audioContext;
+}
+
+// Fade each tone in and out so button clicks and game results stay gentle.
+function playTone(frequency, duration, volume, endFrequency = frequency, delay = 0) {
+  const context = getSoundContext();
+  if (!context) return;
+
+  const startTime = context.currentTime + delay;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  oscillator.frequency.exponentialRampToValueAtTime(endFrequency, startTime + duration);
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration);
+}
+
+// Filter soft noise to make a short rushing-water sound.
+function playWaterSound(volume = 0.06, duration = 0.18) {
+  const context = getSoundContext();
+  if (!context) return;
+
+  const buffer = context.createBuffer(1, Math.floor(context.sampleRate * duration), context.sampleRate);
+  const noise = buffer.getChannelData(0);
+  for (let index = 0; index < noise.length; index++) {
+    noise[index] = Math.random() * 2 - 1;
+  }
+
+  const source = context.createBufferSource();
+  const filter = context.createBiquadFilter();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(650, context.currentTime);
+  gain.gain.setValueAtTime(volume, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(context.destination);
+  source.start();
+}
+
+function playVictorySound() {
+  playTone(523, 0.18, 0.08, 523);
+  playTone(659, 0.18, 0.08, 659, 0.16);
+  playTone(784, 0.3, 0.08, 784, 0.32);
+}
 
 function rotateDirection(direction, rotations) {
   for (let i = 0; i < rotations; i++) {
@@ -208,6 +282,7 @@ function startTimer() {
       flowing = false;
       pauseEl.disabled = true;
       messageEl.textContent = 'Time’s up. Restart to try again.';
+      playTone(330, 0.35, 0.08, 180);
     }
   }, 1000);
 }
@@ -280,6 +355,7 @@ function rotatePipe(row, column, cell) {
   const pipe = grid[row][column];
   pipe.rotation = (pipe.rotation + 1) % 4;
   cell.querySelector('.pipe').style.setProperty('--r', `${pipe.rotation * 90}deg`);
+  playTone(420, 0.06, 0.035, 280);
 }
 
 function formatTime(value) {
@@ -292,10 +368,12 @@ function startFlow() {
   if (paused || flowing || seconds <= 0) return;
   flowing = true;
   boardEl.querySelectorAll('.cell').forEach(cell => cell.classList.remove('wet'));
+  playWaterSound();
 
   let row = 0;
   let column = 0;
   let entry = W;
+  let flowedPipeCount = 0;
   const visited = new Set();
 
   function advance() {
@@ -315,6 +393,8 @@ function startFlow() {
     }
 
     cell.classList.add('wet');
+    flowedPipeCount++;
+    if (flowedPipeCount % 3 === 0) playWaterSound(0.035, 0.12);
     const exit = pipeOpenings.find(direction => direction !== entry);
     if (exit === undefined) {
       fail('Dead end.');
@@ -354,6 +434,7 @@ function fail(text) {
   pauseEl.disabled = false;
   messageEl.textContent = `${text} Keep rotating and try again.`;
   boardEl.classList.add('flash');
+  playTone(260, 0.24, 0.07, 130);
   setTimeout(() => boardEl.classList.remove('flash'), 550);
 }
 
@@ -369,6 +450,7 @@ function win() {
   roundScoreEl.textContent = `+${gain} points`;
   winMessageEl.hidden = false;
   celebrate();
+  playVictorySound();
   continueEl.focus();
 }
 
@@ -532,6 +614,23 @@ musicMuteEl.addEventListener('click', () => {
   musicStatusEl.textContent = musicEl.muted
     ? 'Background music is muted.'
     : 'Background music is unmuted.';
+});
+
+soundEffectsEl.addEventListener('click', () => {
+  soundEffectsEnabled = !soundEffectsEnabled;
+  soundEffectsEl.setAttribute('aria-pressed', String(soundEffectsEnabled));
+  soundEffectsEl.setAttribute(
+    'aria-label',
+    soundEffectsEnabled ? 'Turn sound effects off' : 'Turn sound effects on'
+  );
+  soundEffectsEl.querySelector('span').textContent =
+    `Sound effects: ${soundEffectsEnabled ? 'On' : 'Off'}`;
+  soundEffectsEl.querySelector('i').className = soundEffectsEnabled
+    ? 'bi bi-volume-up-fill'
+    : 'bi bi-volume-mute-fill';
+  soundEffectsStatusEl.textContent = soundEffectsEnabled
+    ? 'Sound effects are on.'
+    : 'Sound effects are off.';
 });
 
 document.querySelector('#restart').addEventListener('click', newGame);
