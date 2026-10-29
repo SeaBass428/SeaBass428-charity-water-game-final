@@ -1,0 +1,12 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/^git status --short && printf '\\\\n-- files --\\\\n' && ls -la$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^find img -maxdepth 2 -type f -printf '%p\\\\n' \\| sort && printf '\\\\n-- recent history --\\\\n' && git --no-pager log -5 --oneline$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}

@@ -19,8 +19,51 @@ const roundScoreEl = document.querySelector('#round-score');
 const scoreEl = document.querySelector('#score');
 const timerEl = document.querySelector('#timer');
 const levelEl = document.querySelector('#level');
+const modeEl = document.querySelector('#game-mode');
+const modeDescriptionEl = document.querySelector('#mode-description');
 const pauseEl = document.querySelector('#pause');
 const continueEl = document.querySelector('#continue');
+const musicEl = document.querySelector('#background-music');
+const musicTrackNameEl = document.querySelector('#music-track-name');
+const musicTrackListEl = document.querySelector('#music-track-list');
+const musicProgressEl = document.querySelector('#music-progress');
+const musicCurrentTimeEl = document.querySelector('#music-current-time');
+const musicDurationEl = document.querySelector('#music-duration');
+const musicBackEl = document.querySelector('#music-back');
+const musicPlayEl = document.querySelector('#music-play');
+const musicPlayIconEl = document.querySelector('#music-play-icon');
+const musicPlayTextEl = document.querySelector('#music-play-text');
+const musicForwardEl = document.querySelector('#music-forward');
+const musicMuteEl = document.querySelector('#music-mute');
+const musicMuteIconEl = document.querySelector('#music-mute-icon');
+const musicStatusEl = document.querySelector('#music-status');
+const difficultySettings = {
+  normal: {
+    startingSeconds: 60,
+    secondsPerLevel: 4,
+    minimumSeconds: 35,
+    startingDetours: 0,
+    detoursPerTwoLevels: 2,
+    maximumDetours: 12,
+    description: 'More time to solve each puzzle.'
+  },
+  hard: {
+    startingSeconds: 45,
+    secondsPerLevel: 5,
+    minimumSeconds: 25,
+    startingDetours: 4,
+    detoursPerTwoLevels: 2,
+    maximumDetours: 14,
+    description: 'Less time and a more winding pipe route.'
+  }
+};
+const musicTracks = [
+  { title: 'Jump into Water by Alex Zavesa', source: 'audio/alexzavesa-jump-into-water.mp3' },
+  { title: 'Water by Nojisuma', source: 'audio/nojisuma-water.mp3' },
+  { title: 'Arcade Game BGM by Skidnney', source: 'audio/skidnney-arcade-game-bgm.mp3' },
+  { title: 'Peaceful Waters by Turning Pages', source: 'audio/turning_pages-peaceful-waters.mp3' },
+  { title: 'Water Chapter Reflections Beneath by u_gsd104f99b', source: 'audio/u_gsd104f99b-water-chapter-reflections-beneath.mp3' }
+];
 
 let grid = [];
 let score = 0;
@@ -34,6 +77,7 @@ let pausedMessage = '';
 let flowCallback = null;
 let flowDelay = 0;
 let flowScheduledAt = 0;
+let currentMusicTrack = 0;
 
 function rotateDirection(direction, rotations) {
   for (let i = 0; i < rotations; i++) {
@@ -53,7 +97,7 @@ function pipeSvg(type) {
   return `<svg viewBox="0 0 100 100" aria-hidden="true">${parts}</svg>`;
 }
 
-function buildSolution() {
+function buildSolution(settings) {
   const path = [[0, 0]];
   let row = 0;
   let column = 0;
@@ -66,7 +110,10 @@ function buildSolution() {
     path.push([row, column]);
   }
 
-  const detours = Math.min(12, Math.floor((level - 1) / 2) * 2);
+  const detours = Math.min(
+    settings.maximumDetours,
+    settings.startingDetours + Math.floor((level - 1) / 2) * settings.detoursPerTwoLevels
+  );
   for (let detour = 0; detour < detours; detour++) {
     const occupied = new Set(path.map(([pathRow, pathColumn]) => `${pathRow},${pathColumn}`));
     const candidates = [];
@@ -166,6 +213,7 @@ function startTimer() {
 }
 
 function newGame() {
+  const settings = difficultySettings[modeEl.value];
   clearInterval(ticking);
   clearFlowTimeout();
   celebrationEl.replaceChildren();
@@ -175,10 +223,13 @@ function newGame() {
   pauseEl.textContent = 'Pause';
   pauseEl.setAttribute('aria-pressed', 'false');
   pauseEl.disabled = false;
-  seconds = Math.max(35, 60 - (level - 1) * 4);
+  seconds = Math.max(
+    settings.minimumSeconds,
+    settings.startingSeconds - (level - 1) * settings.secondsPerLevel
+  );
   flowing = false;
 
-  const path = buildSolution();
+  const path = buildSolution(settings);
   const pathCells = new Map(path.map(([row, column], index) => [`${row},${column}`, index]));
   grid = Array.from({ length: 9 }, () => Array(8));
 
@@ -363,8 +414,144 @@ function togglePause() {
   if (flowCallback) scheduleFlow(flowCallback, flowDelay);
 }
 
+musicEl.volume = 0.25;
+
+function formatMusicTime(time) {
+  if (!Number.isFinite(time) || time < 0) return '--:--';
+
+  const minutes = Math.floor(time / 60);
+  const seconds = Math.floor(time % 60);
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function updateMusicTime() {
+  musicCurrentTimeEl.textContent = formatMusicTime(musicEl.currentTime);
+  musicProgressEl.value = String(musicEl.currentTime);
+}
+
+function updateMusicDuration() {
+  const hasDuration = Number.isFinite(musicEl.duration) && musicEl.duration > 0;
+  musicDurationEl.textContent = formatMusicTime(musicEl.duration);
+  musicProgressEl.max = hasDuration ? String(musicEl.duration) : '0';
+  musicProgressEl.disabled = !hasDuration;
+  musicBackEl.disabled = !hasDuration;
+  musicForwardEl.disabled = !hasDuration;
+  updateMusicTime();
+}
+
+function renderMusicTracks() {
+  musicTracks.forEach((track, index) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.className = 'music-track';
+    button.type = 'button';
+    button.textContent = track.title;
+    button.setAttribute('aria-current', String(index === currentMusicTrack));
+    button.addEventListener('click', () => selectMusicTrack(index));
+    item.append(button);
+    musicTrackListEl.append(item);
+  });
+}
+
+function selectMusicTrack(index) {
+  const wasPlaying = !musicEl.paused;
+  currentMusicTrack = index;
+  const track = musicTracks[currentMusicTrack];
+
+  musicTrackNameEl.textContent = track.title;
+  musicTrackListEl.querySelectorAll('.music-track').forEach((button, trackIndex) => {
+    button.setAttribute('aria-current', String(trackIndex === currentMusicTrack));
+  });
+  musicEl.src = track.source;
+  musicEl.load();
+  updateMusicDuration();
+
+  if (wasPlaying) {
+    musicEl.play().catch(() => {
+      musicStatusEl.textContent = 'Background music could not be started.';
+    });
+  }
+}
+
+function skipMusic(secondsToSkip) {
+  if (!Number.isFinite(musicEl.duration)) return;
+
+  musicEl.currentTime = Math.max(
+    0,
+    Math.min(musicEl.duration, musicEl.currentTime + secondsToSkip)
+  );
+  updateMusicTime();
+}
+
+renderMusicTracks();
+musicPlayEl.addEventListener('click', () => {
+  if (musicEl.paused) {
+    // Playing after a click works with browsers that block autoplay.
+    musicEl.play().catch(() => {
+      musicStatusEl.textContent = 'Background music could not be started.';
+    });
+    return;
+  }
+
+  musicEl.pause();
+});
+
+musicEl.addEventListener('play', () => {
+  musicPlayIconEl.className = 'bi bi-pause-fill';
+  musicPlayTextEl.textContent = 'Pause';
+  musicPlayEl.setAttribute('aria-label', 'Pause background music');
+  musicStatusEl.textContent = 'Background music is playing.';
+});
+
+musicEl.addEventListener('pause', () => {
+  musicPlayIconEl.className = 'bi bi-play-fill';
+  musicPlayTextEl.textContent = 'Play';
+  musicPlayEl.setAttribute('aria-label', 'Play background music');
+  musicStatusEl.textContent = 'Background music is paused.';
+});
+
+musicEl.addEventListener('error', () => {
+  musicStatusEl.textContent = 'Background music could not be loaded.';
+});
+musicEl.addEventListener('loadedmetadata', updateMusicDuration);
+musicEl.addEventListener('durationchange', updateMusicDuration);
+musicEl.addEventListener('timeupdate', updateMusicTime);
+if (musicEl.readyState > 0) updateMusicDuration();
+
+musicBackEl.addEventListener('click', () => skipMusic(-10));
+musicForwardEl.addEventListener('click', () => skipMusic(10));
+musicProgressEl.addEventListener('input', () => {
+  musicEl.currentTime = Number(musicProgressEl.value);
+  updateMusicTime();
+});
+
+musicMuteEl.addEventListener('click', () => {
+  musicEl.muted = !musicEl.muted;
+  musicMuteIconEl.className = musicEl.muted
+    ? 'bi bi-volume-mute-fill'
+    : 'bi bi-volume-up-fill';
+  musicMuteEl.querySelector('span').textContent = musicEl.muted ? 'Unmute' : 'Mute';
+  musicMuteEl.setAttribute('aria-pressed', String(musicEl.muted));
+  musicMuteEl.setAttribute(
+    'aria-label',
+    musicEl.muted ? 'Unmute background music' : 'Mute background music'
+  );
+  musicStatusEl.textContent = musicEl.muted
+    ? 'Background music is muted.'
+    : 'Background music is unmuted.';
+});
+
 document.querySelector('#restart').addEventListener('click', newGame);
 document.querySelector('#flow').addEventListener('click', startFlow);
+modeEl.addEventListener('change', () => {
+  const settings = difficultySettings[modeEl.value];
+  level = 1;
+  score = 0;
+  levelEl.textContent = `Level ${level}`;
+  scoreEl.textContent = `Score: ${score}`;
+  modeDescriptionEl.textContent = settings.description;
+  newGame();
+});
 continueEl.addEventListener('click', () => {
   level++;
   levelEl.textContent = `Level ${level}`;
