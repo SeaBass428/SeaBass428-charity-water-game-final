@@ -27,8 +27,16 @@
                 <section class="win-message" id="win-message" aria-live="polite" hidden>
                     <h2>You win!</h2>
                     <p id="round-score"></p>
-                    <p>Continue to the next level?</p>
+                    <p id="win-prompt">Continue to the next level?</p>
                     <button class="btn" id="continue" type="button">Continue</button>
+                </section>
+                <section class="milestone-tracker" aria-labelledby="milestone-heading">
+                    <div class="milestone-header">
+                        <h2 id="milestone-heading">Your water journey</h2>
+                        <p id="campaign-progress-label">0 of 10 levels complete</p>
+                    </div>
+                    <progress id="campaign-progress" max="10" value="0" aria-label="Campaign progress"></progress>
+                    <ol class="milestone-list" id="milestone-list" aria-label="Campaign milestones"></ol>
                 </section>
             </aside>
             <div class="board-wrap">

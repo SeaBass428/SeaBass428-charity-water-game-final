@@ -2,6 +2,7 @@ const N = 1;
 const E = 2;
 const S = 4;
 const W = 8;
+const directionOrder = [N, E, S, W];
 
 const delta = {
   [N]: [-1, 0],
@@ -16,9 +17,13 @@ const messageEl = document.querySelector('#message');
 const winMessageEl = document.querySelector('#win-message');
 const celebrationEl = document.querySelector('#celebration');
 const roundScoreEl = document.querySelector('#round-score');
+const winPromptEl = document.querySelector('#win-prompt');
 const scoreEl = document.querySelector('#score');
 const timerEl = document.querySelector('#timer');
 const levelEl = document.querySelector('#level');
+const campaignProgressEl = document.querySelector('#campaign-progress');
+const campaignProgressLabelEl = document.querySelector('#campaign-progress-label');
+const milestoneListEl = document.querySelector('#milestone-list');
 const modeEl = document.querySelector('#game-mode');
 const modeDescriptionEl = document.querySelector('#mode-description');
 const pauseEl = document.querySelector('#pause');
@@ -39,6 +44,12 @@ const musicMuteIconEl = document.querySelector('#music-mute-icon');
 const musicStatusEl = document.querySelector('#music-status');
 const soundEffectsEl = document.querySelector('#sound-effects');
 const soundEffectsStatusEl = document.querySelector('#sound-effects-status');
+const totalLevels = 10;
+const milestones = [
+  { level: 3, title: 'Steady Stream', reward: 250 },
+  { level: 5, title: 'Water Champion', reward: 500 },
+  { level: 10, title: 'Community Hero', reward: 1000 }
+];
 const difficultySettings = {
   normal: {
     startingSeconds: 60,
@@ -70,6 +81,8 @@ const musicTracks = [
 let grid = [];
 let score = 0;
 let level = 1;
+let completedLevels = 0;
+const earnedMilestones = new Set();
 let seconds = 60;
 let ticking = null;
 let flowTimeout = null;
@@ -154,10 +167,8 @@ function playVictorySound() {
 }
 
 function rotateDirection(direction, rotations) {
-  for (let i = 0; i < rotations; i++) {
-    direction = direction === N ? E : direction === E ? S : direction === S ? W : N;
-  }
-  return direction;
+  const startIndex = directionOrder.indexOf(direction);
+  return directionOrder[(startIndex + rotations) % directionOrder.length];
 }
 
 function openings(type, rotations) {
@@ -364,6 +375,35 @@ function formatTime(value) {
   return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
+function renderMilestones() {
+  milestoneListEl.innerHTML = milestones.map(milestone => `
+    <li class="milestone-item" data-level="${milestone.level}">
+      <div class="milestone-details">
+        <strong>Level ${milestone.level}: ${milestone.title}</strong>
+        <span>+${milestone.reward} points</span>
+      </div>
+      <span class="milestone-status"></span>
+    </li>
+  `).join('');
+}
+
+function updateCampaignProgress() {
+  campaignProgressEl.value = completedLevels;
+  campaignProgressLabelEl.textContent = `${completedLevels} of ${totalLevels} levels complete`;
+
+  const nextMilestoneIndex = milestones.findIndex(milestone => milestone.level > completedLevels);
+  milestoneListEl.querySelectorAll('.milestone-item').forEach((item, index) => {
+    const milestone = milestones[index];
+    const isEarned = earnedMilestones.has(milestone.level);
+    const isNext = !isEarned && index === nextMilestoneIndex;
+    const status = item.querySelector('.milestone-status');
+
+    item.classList.toggle('is-earned', isEarned);
+    item.classList.toggle('is-next', isNext);
+    status.textContent = isEarned ? 'Earned' : isNext ? 'Next up' : 'Locked';
+  });
+}
+
 function startFlow() {
   if (paused || flowing || seconds <= 0) return;
   flowing = true;
@@ -443,15 +483,29 @@ function win() {
   ticking = null;
   clearFlowTimeout();
   pauseEl.disabled = true;
-  const gain = 100 + seconds * 5;
+  completedLevels = Math.max(completedLevels, level);
+  const baseGain = 100 + seconds * 5;
+  const milestone = milestones.find(item => item.level === level);
+  const milestoneReward = milestone && !earnedMilestones.has(level) ? milestone.reward : 0;
+  if (milestoneReward > 0) earnedMilestones.add(level);
+  const gain = baseGain + milestoneReward;
   score += gain;
   scoreEl.textContent = `Score: ${score}`;
+  updateCampaignProgress();
   messageEl.hidden = true;
-  roundScoreEl.textContent = `+${gain} points`;
+  roundScoreEl.textContent = milestoneReward > 0
+    ? `+${baseGain} points + ${milestoneReward} milestone bonus: ${milestone.title}`
+    : `+${baseGain} points${milestone ? ' (milestone already earned)' : ''}`;
   winMessageEl.hidden = false;
+  const campaignComplete = level === totalLevels;
+  winMessageEl.querySelector('h2').textContent = campaignComplete ? 'Campaign complete!' : 'You win!';
+  winPromptEl.textContent = campaignComplete
+    ? `You completed all ${totalLevels} levels. Final score: ${score}.`
+    : 'Continue to the next level?';
+  continueEl.hidden = campaignComplete;
   celebrate();
   playVictorySound();
-  continueEl.focus();
+  if (!campaignComplete) continueEl.focus();
 }
 
 function celebrate() {
@@ -519,6 +573,37 @@ function updateMusicDuration() {
   updateMusicTime();
 }
 
+function updateMusicPlaybackUI(isPlaying) {
+  musicPlayIconEl.className = isPlaying ? 'bi bi-pause-fill' : 'bi bi-play-fill';
+  musicPlayTextEl.textContent = isPlaying ? 'Pause' : 'Play';
+  musicPlayEl.setAttribute('aria-label', `${isPlaying ? 'Pause' : 'Play'} background music`);
+  musicStatusEl.textContent = isPlaying
+    ? 'Background music is playing.'
+    : 'Background music is paused.';
+}
+
+function updateMusicMuteUI(isMuted) {
+  musicMuteIconEl.className = isMuted ? 'bi bi-volume-mute-fill' : 'bi bi-volume-up-fill';
+  musicMuteEl.querySelector('span').textContent = isMuted ? 'Unmute' : 'Mute';
+  musicMuteEl.setAttribute('aria-pressed', String(isMuted));
+  musicMuteEl.setAttribute('aria-label', isMuted ? 'Unmute background music' : 'Mute background music');
+  musicStatusEl.textContent = isMuted
+    ? 'Background music is muted.'
+    : 'Background music is unmuted.';
+}
+
+function updateSoundToggleUI(isEnabled) {
+  soundEffectsEl.setAttribute('aria-pressed', String(isEnabled));
+  soundEffectsEl.setAttribute('aria-label', isEnabled ? 'Turn sound effects off' : 'Turn sound effects on');
+  soundEffectsEl.querySelector('span').textContent = `Sound effects: ${isEnabled ? 'On' : 'Off'}`;
+  soundEffectsEl.querySelector('i').className = isEnabled
+    ? 'bi bi-volume-up-fill'
+    : 'bi bi-volume-mute-fill';
+  soundEffectsStatusEl.textContent = isEnabled
+    ? 'Sound effects are on.'
+    : 'Sound effects are off.';
+}
+
 function renderMusicTracks() {
   musicTracks.forEach((track, index) => {
     const item = document.createElement('li');
@@ -557,6 +642,8 @@ function changeMusicTrack(trackDelta, shouldPlay = !musicEl.paused) {
   selectMusicTrack(nextTrack, shouldPlay);
 }
 
+renderMilestones();
+updateCampaignProgress();
 renderMusicTracks();
 musicPlayEl.addEventListener('click', () => {
   if (musicEl.paused) {
@@ -570,20 +657,8 @@ musicPlayEl.addEventListener('click', () => {
   musicEl.pause();
 });
 
-musicEl.addEventListener('play', () => {
-  musicPlayIconEl.className = 'bi bi-pause-fill';
-  musicPlayTextEl.textContent = 'Pause';
-  musicPlayEl.setAttribute('aria-label', 'Pause background music');
-  musicStatusEl.textContent = 'Background music is playing.';
-});
-
-musicEl.addEventListener('pause', () => {
-  musicPlayIconEl.className = 'bi bi-play-fill';
-  musicPlayTextEl.textContent = 'Play';
-  musicPlayEl.setAttribute('aria-label', 'Play background music');
-  musicStatusEl.textContent = 'Background music is paused.';
-});
-
+musicEl.addEventListener('play', () => updateMusicPlaybackUI(true));
+musicEl.addEventListener('pause', () => updateMusicPlaybackUI(false));
 musicEl.addEventListener('error', () => {
   musicStatusEl.textContent = 'Background music could not be loaded.';
 });
@@ -602,35 +677,12 @@ musicProgressEl.addEventListener('input', () => {
 
 musicMuteEl.addEventListener('click', () => {
   musicEl.muted = !musicEl.muted;
-  musicMuteIconEl.className = musicEl.muted
-    ? 'bi bi-volume-mute-fill'
-    : 'bi bi-volume-up-fill';
-  musicMuteEl.querySelector('span').textContent = musicEl.muted ? 'Unmute' : 'Mute';
-  musicMuteEl.setAttribute('aria-pressed', String(musicEl.muted));
-  musicMuteEl.setAttribute(
-    'aria-label',
-    musicEl.muted ? 'Unmute background music' : 'Mute background music'
-  );
-  musicStatusEl.textContent = musicEl.muted
-    ? 'Background music is muted.'
-    : 'Background music is unmuted.';
+  updateMusicMuteUI(musicEl.muted);
 });
 
 soundEffectsEl.addEventListener('click', () => {
   soundEffectsEnabled = !soundEffectsEnabled;
-  soundEffectsEl.setAttribute('aria-pressed', String(soundEffectsEnabled));
-  soundEffectsEl.setAttribute(
-    'aria-label',
-    soundEffectsEnabled ? 'Turn sound effects off' : 'Turn sound effects on'
-  );
-  soundEffectsEl.querySelector('span').textContent =
-    `Sound effects: ${soundEffectsEnabled ? 'On' : 'Off'}`;
-  soundEffectsEl.querySelector('i').className = soundEffectsEnabled
-    ? 'bi bi-volume-up-fill'
-    : 'bi bi-volume-mute-fill';
-  soundEffectsStatusEl.textContent = soundEffectsEnabled
-    ? 'Sound effects are on.'
-    : 'Sound effects are off.';
+  updateSoundToggleUI(soundEffectsEnabled);
 });
 
 document.querySelector('#restart').addEventListener('click', newGame);
@@ -638,13 +690,17 @@ document.querySelector('#flow').addEventListener('click', startFlow);
 modeEl.addEventListener('change', () => {
   const settings = difficultySettings[modeEl.value];
   level = 1;
+  completedLevels = 0;
+  earnedMilestones.clear();
   score = 0;
   levelEl.textContent = `Level ${level}`;
   scoreEl.textContent = `Score: ${score}`;
+  updateCampaignProgress();
   modeDescriptionEl.textContent = settings.description;
   newGame();
 });
 continueEl.addEventListener('click', () => {
+  if (level >= totalLevels) return;
   level++;
   levelEl.textContent = `Level ${level}`;
   newGame();
