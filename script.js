@@ -434,8 +434,6 @@ function updateMusicDuration() {
   musicDurationEl.textContent = formatMusicTime(musicEl.duration);
   musicProgressEl.max = hasDuration ? String(musicEl.duration) : '0';
   musicProgressEl.disabled = !hasDuration;
-  musicBackEl.disabled = !hasDuration;
-  musicForwardEl.disabled = !hasDuration;
   updateMusicTime();
 }
 
@@ -453,8 +451,7 @@ function renderMusicTracks() {
   });
 }
 
-function selectMusicTrack(index) {
-  const wasPlaying = !musicEl.paused;
+function selectMusicTrack(index, shouldPlay = !musicEl.paused) {
   currentMusicTrack = index;
   const track = musicTracks[currentMusicTrack];
 
@@ -466,21 +463,16 @@ function selectMusicTrack(index) {
   musicEl.load();
   updateMusicDuration();
 
-  if (wasPlaying) {
+  if (shouldPlay) {
     musicEl.play().catch(() => {
       musicStatusEl.textContent = 'Background music could not be started.';
     });
   }
 }
 
-function skipMusic(secondsToSkip) {
-  if (!Number.isFinite(musicEl.duration)) return;
-
-  musicEl.currentTime = Math.max(
-    0,
-    Math.min(musicEl.duration, musicEl.currentTime + secondsToSkip)
-  );
-  updateMusicTime();
+function changeMusicTrack(trackDelta, shouldPlay = !musicEl.paused) {
+  const nextTrack = (currentMusicTrack + trackDelta + musicTracks.length) % musicTracks.length;
+  selectMusicTrack(nextTrack, shouldPlay);
 }
 
 renderMusicTracks();
@@ -513,13 +505,14 @@ musicEl.addEventListener('pause', () => {
 musicEl.addEventListener('error', () => {
   musicStatusEl.textContent = 'Background music could not be loaded.';
 });
+musicEl.addEventListener('ended', () => changeMusicTrack(1, true));
 musicEl.addEventListener('loadedmetadata', updateMusicDuration);
 musicEl.addEventListener('durationchange', updateMusicDuration);
 musicEl.addEventListener('timeupdate', updateMusicTime);
 if (musicEl.readyState > 0) updateMusicDuration();
 
-musicBackEl.addEventListener('click', () => skipMusic(-10));
-musicForwardEl.addEventListener('click', () => skipMusic(10));
+musicBackEl.addEventListener('click', () => changeMusicTrack(-1));
+musicForwardEl.addEventListener('click', () => changeMusicTrack(1));
 musicProgressEl.addEventListener('input', () => {
   musicEl.currentTime = Number(musicProgressEl.value);
   updateMusicTime();

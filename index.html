@@ -81,14 +81,14 @@
                             <span>/ <span id="music-duration">--:--</span></span>
                         </div>
                         <div class="music-actions">
-                            <button class="btn btn-outline-secondary music-button" id="music-back" type="button" aria-label="Skip back 10 seconds" disabled>
+                            <button class="btn btn-outline-secondary music-button" id="music-back" type="button" aria-label="Play previous song">
                                 <i class="bi bi-skip-backward-fill" aria-hidden="true"></i>
                             </button>
                             <button class="btn btn-primary music-button" id="music-play" type="button" aria-label="Play background music">
                                 <i class="bi bi-play-fill" id="music-play-icon" aria-hidden="true"></i>
                                 <span id="music-play-text">Play</span>
                             </button>
-                            <button class="btn btn-outline-secondary music-button" id="music-forward" type="button" aria-label="Skip forward 10 seconds" disabled>
+                            <button class="btn btn-outline-secondary music-button" id="music-forward" type="button" aria-label="Play next song">
                                 <i class="bi bi-skip-forward-fill" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -96,7 +96,7 @@
                             <i class="bi bi-volume-up-fill" id="music-mute-icon" aria-hidden="true"></i>
                             <span>Mute</span>
                         </button>
-                        <audio id="background-music" loop preload="metadata">
+                        <audio id="background-music" preload="metadata">
                             <source src="audio/alexzavesa-jump-into-water.mp3" type="audio/mpeg">
                         </audio>
                         <p class="visually-hidden" id="music-status" aria-live="polite">Background music is off.</p>
